@@ -1,0 +1,75 @@
+stages:
+  - build
+  - test
+  - report
+
+variables:
+  GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle"
+
+# =========================
+# 1. BUILD STAGE
+# =========================
+build:
+  stage: build
+  image: gradle:8.7-jdk17
+  script:
+    - ./gradlew assembleDebug
+  artifacts:
+    paths:
+      - app/build/outputs/
+
+# =========================
+# 2. INSTRUMENTATION TESTS (EMULATOR)
+# =========================
+android_test:
+  stage: test
+  image: gradle:8.7-jdk17
+
+  services:
+    - name: budtmo/docker-android-emulator:latest
+      alias: emulator
+
+  variables:
+    ANDROID_HOME: "/sdk"
+
+  before_script:
+    - apt-get update && apt-get install -y wget unzip
+    - wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+    - unzip commandlinetools-linux-*.zip -d $ANDROID_HOME
+    - yes | $ANDROID_HOME/cmdline-tools/bin/sdkmanager --licenses
+    - $ANDROID_HOME/cmdline-tools/bin/sdkmanager "platform-tools" "platforms;android-36"
+
+  script:
+    - ./gradlew connectedAndroidTest
+
+  artifacts:
+    when: always
+    paths:
+      - app/build/outputs/androidTest-results/
+      - app/build/reports/
+    expire_in: 7 days
+
+# =========================
+# 3. ALLURE REPORT GENERATION
+# =========================
+allure_report:
+  stage: report
+  image: openjdk:17
+
+  before_script:
+    - apt-get update && apt-get install -y wget unzip curl
+    - wget https://github.com/allure-framework/allure2/releases/latest/download/allure-2.27.0.tgz
+    - tar -xvzf allure-2.27.0.tgz
+    - mv allure-2.27.0 /allure
+
+  script:
+    - mkdir -p build/allure-results
+    - cp -r app/build/outputs/androidTest-results/connected/* build/allure-results/ || true
+    - /allure/bin/allure generate build/allure-results -o build/allure-report --clean
+
+  artifacts:
+    when: always
+    paths:
+      - build/allure-report/
+      - build/allure-results/
+    expire_in: 7 days
