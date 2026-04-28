@@ -14,13 +14,13 @@ jobs:
 
     steps:
       # ----------------------------
-      # 1. Checkout code
+      # 1. Checkout
       # ----------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # ----------------------------
-      # 2. Set up JDK
+      # 2. JDK setup
       # ----------------------------
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -29,19 +29,7 @@ jobs:
           java-version: 17
 
       # ----------------------------
-      # 3. Setup Android SDK
-      # ----------------------------
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      # ----------------------------
-      # 4. Accept SDK licenses
-      # ----------------------------
-      - name: Accept licenses
-        run: yes | sdkmanager --licenses
-
-      # ----------------------------
-      # 5. Run Emulator + Tests (FIXED BOOT LOGIC)
+      # 3. Run emulator + tests
       # ----------------------------
       - name: Run Android Instrumentation Tests
         uses: reactivecircus/android-emulator-runner@v2
@@ -50,40 +38,24 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_6
+          disable-animations: true
           emulator-options: >
             -no-window
             -no-audio
             -no-snapshot
             -gpu swiftshader_indirect
-            -no-boot-anim
           script: |
-            echo "Waiting for emulator device..."
-
-            adb wait-for-device
-
-            echo "Waiting for Android system boot..."
-            BOOT_COMPLETED=""
-            until [ "$BOOT_COMPLETED" = "1" ]; do
-              BOOT_COMPLETED=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
-              echo "Boot status: $BOOT_COMPLETED"
-              sleep 5
-            done
-
-            echo "Device fully booted. Unlocking screen..."
-            adb shell input keyevent 82
-
-            echo "Running instrumentation tests..."
-            ./gradlew connectedAndroidTest
+            ./gradlew clean connectedDebugAndroidTest
 
       # ----------------------------
-      # 6. Generate Allure Report
+      # 4. Allure Report
       # ----------------------------
       - name: Generate Allure Report
         if: always()
         run: ./gradlew allureReport || true
 
       # ----------------------------
-      # 7. Upload Test Reports
+      # 5. Upload reports
       # ----------------------------
       - name: Upload Test Results
         if: always()
