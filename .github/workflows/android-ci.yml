@@ -4,12 +4,12 @@ on:
   push:
     branches: [ "main" ]
   schedule:
-    - cron: "0 * * * *"   # every 1 hour
+    - cron: "0 * * * *"
   workflow_dispatch:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest   # ✅ IMPORTANT CHANGE (emulator support)
 
     steps:
       - name: Checkout code
@@ -21,27 +21,41 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Grant Gradle permissions
         run: chmod +x gradlew
 
-      - name: Run Instrumentation Tests (emulator-free mode fallback)
-        run: ./gradlew connectedAndroidTest
+      # =========================
+      # START ANDROID EMULATOR
+      # =========================
+      - name: Run Android Emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          script: ./gradlew connectedAndroidTest
 
+      # =========================
+      # ALLURE REPORT
+      # =========================
       - name: Prepare Allure Results
+        if: always()
         run: |
           mkdir -p build/allure-results
           cp -r app/build/outputs/androidTest-results/connected/* build/allure-results/ || true
 
       - name: Generate Allure Report
+        if: always()
         run: |
           curl -o allure.tgz -L https://github.com/allure-framework/allure2/releases/latest/download/allure-2.27.0.tgz
           tar -xvzf allure.tgz
           ./allure-2.27.0/bin/allure generate build/allure-results -o build/allure-report --clean
 
-      - name: Upload Test Reports
+      # =========================
+      # ARTIFACTS
+      # =========================
+      - name: Upload Allure Report
         uses: actions/upload-artifact@v4
         with:
           name: allure-report
