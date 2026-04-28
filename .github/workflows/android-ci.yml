@@ -95,7 +95,7 @@ jobs:
         run: echo "Skipping Allure report (not configured in Gradle)"
 
       # ----------------------------
-      # Upload artifacts (fixed paths) test
+      # Upload artifacts (fixed paths)
       # ----------------------------
       - name: Upload Test Results
         if: always()
