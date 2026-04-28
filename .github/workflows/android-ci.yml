@@ -1,0 +1,54 @@
+name: Android Test Harness CI
+
+on:
+  push:
+    branches: [ "main" ]
+  schedule:
+    - cron: "0 * * * *"   # every 1 hour
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Grant Gradle permissions
+        run: chmod +x gradlew
+
+      - name: Run Instrumentation Tests (emulator-free mode fallback)
+        run: ./gradlew connectedAndroidTest
+
+      - name: Prepare Allure Results
+        run: |
+          mkdir -p build/allure-results
+          cp -r app/build/outputs/androidTest-results/connected/* build/allure-results/ || true
+
+      - name: Generate Allure Report
+        run: |
+          curl -o allure.tgz -L https://github.com/allure-framework/allure2/releases/latest/download/allure-2.27.0.tgz
+          tar -xvzf allure.tgz
+          ./allure-2.27.0/bin/allure generate build/allure-results -o build/allure-report --clean
+
+      - name: Upload Test Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report
+          path: build/allure-report
+
+      - name: Upload JUnit Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-results
+          path: app/build/outputs/androidTest-results/
