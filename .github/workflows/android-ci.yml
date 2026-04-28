@@ -13,7 +13,7 @@ on:
 
 jobs:
   android-test:
-    runs-on: ubuntu-latest   # ✅ FIX: stable for Android emulator CI
+    runs-on: ubuntu-latest   # ✅ stable for Android emulator CI
 
     steps:
       # ---------------------------
@@ -38,7 +38,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       # ---------------------------
-      # 4. Run Emulator + Tests
+      # 4. Run Emulator + Instrumentation Tests
       # ---------------------------
       - name: Run Android Instrumentation Tests
         uses: reactivecircus/android-emulator-runner@v2
@@ -47,18 +47,37 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_6
+
           emulator-options: >-
             -no-window
             -no-audio
             -gpu swiftshader_indirect
             -no-snapshot
             -no-boot-anim
+            -wipe-data
+
           script: |
+            echo "Starting test execution..."
+
+            # Wait for emulator device
             adb wait-for-device
+
+            # Wait until Android fully boots
+            echo "Waiting for Android boot completion..."
+            adb shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 5; done;'
+
+            # Unlock device (important for CI stability)
+            echo "Unlocking emulator..."
+            adb shell input keyevent 82
+
+            # Extra safety buffer
+            adb shell sleep 30
+
+            # Run instrumentation tests
             ./gradlew connectedAndroidTest
 
       # ---------------------------
-      # 5. Upload test results
+      # 5. Upload Android Test Results
       # ---------------------------
       - name: Upload Instrumentation Test Results
         if: always()
@@ -68,7 +87,7 @@ jobs:
           path: app/build/reports/androidTests/
 
       # ---------------------------
-      # 6. Upload Allure Results (if generated later)
+      # 6. Upload Allure Results (future use)
       # ---------------------------
       - name: Upload Allure Results
         if: always()
