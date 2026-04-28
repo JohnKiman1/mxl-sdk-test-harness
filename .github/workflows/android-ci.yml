@@ -35,15 +35,13 @@ jobs:
         uses: android-actions/setup-android@v3
 
       # ----------------------------
-      # 4. Accept SDK licenses + ensure tools
+      # 4. Accept SDK licenses
       # ----------------------------
       - name: Accept licenses
         run: yes | sdkmanager --licenses
 
       # ----------------------------
-      # 5. Start Emulator (FULLY MANAGED)
-      #    - No manual AVD creation needed
-      #    - Handles boot wait internally
+      # 5. Run Emulator + Tests (FIXED BOOT LOGIC)
       # ----------------------------
       - name: Run Android Instrumentation Tests
         uses: reactivecircus/android-emulator-runner@v2
@@ -57,14 +55,28 @@ jobs:
             -no-audio
             -no-snapshot
             -gpu swiftshader_indirect
+            -no-boot-anim
           script: |
+            echo "Waiting for emulator device..."
+
             adb wait-for-device
-            adb shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 5; done;'
+
+            echo "Waiting for Android system boot..."
+            BOOT_COMPLETED=""
+            until [ "$BOOT_COMPLETED" = "1" ]; do
+              BOOT_COMPLETED=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+              echo "Boot status: $BOOT_COMPLETED"
+              sleep 5
+            done
+
+            echo "Device fully booted. Unlocking screen..."
             adb shell input keyevent 82
+
+            echo "Running instrumentation tests..."
             ./gradlew connectedAndroidTest
 
       # ----------------------------
-      # 6. Generate Allure Report (safe)
+      # 6. Generate Allure Report
       # ----------------------------
       - name: Generate Allure Report
         if: always()
