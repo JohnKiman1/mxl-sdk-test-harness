@@ -1,116 +1,92 @@
-name: Android CI Test Harness
+name: Android Emulator CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, fix/** ]
   pull_request:
-    branches: [ main ]
-  schedule:
-    - cron: "0 * * * *"  # every 1 hour
 
 jobs:
   android-tests:
     runs-on: ubuntu-latest
 
     steps:
-      # ----------------------------
-      # 1. Checkout repository
-      # ----------------------------
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      # ----------------------------
-      # 2. Set up JDK
-      # ----------------------------
-      - name: Set up JDK 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      # ----------------------------
-      # 3. Install Android SDK
-      # ----------------------------
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # ----------------------------
-      # 4. Accept SDK licenses
-      # ----------------------------
-      - name: Accept licenses
-        run: yes | sdkmanager --licenses
-
-      # ----------------------------
-      # 5. Set stable AVD environment
-      # ----------------------------
-      - name: Setup AVD environment
+      - name: Install SDK components
         run: |
-          echo "ANDROID_AVD_HOME=$HOME/.android/avd" >> $GITHUB_ENV
-          mkdir -p $HOME/.android/avd
+          sdkmanager "platform-tools" \
+                     "platforms;android-34" \
+                     "system-images;android-34;google_apis;x86_64" \
+                     "emulator"
 
-      # ----------------------------
-      # 6. Install system image
-      # ----------------------------
-      - name: Install system image
-        run: |
-          sdkmanager "system-images;android-34;google_apis;x86_64"
-
-      # ----------------------------
-      # 7. Create AVD (FIXED)
-      # ----------------------------
-      - name: Create AVD
+      - name: Create AVD (IMPORTANT FIX)
         run: |
           echo "no" | avdmanager create avd \
-            -n test \
+            -n ci_emulator \
             -k "system-images;android-34;google_apis;x86_64" \
             --force
 
-          ls $HOME/.android/avd
-
-      # ----------------------------
-      # 8. Start Emulator (stable)
-      # ----------------------------
       - name: Start Emulator
-        run: |
-          $ANDROID_HOME/emulator/emulator \
-            -avd test \
-            -no-window \
-            -no-audio \
-            -no-snapshot \
-            -gpu swiftshader_indirect \
-            -accel off &
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_5
+          avd-name: ci_emulator
+          disable-animations: true
+          emulator-options: >
+            -no-window
+            -no-audio
+            -no-snapshot
+            -gpu swiftshader_indirect
+            -no-boot-anim
 
-      # ----------------------------
-      # 9. Wait for emulator boot
-      # ----------------------------
-      - name: Wait for emulator
+      - name: Wait for emulator FULL BOOT (CRITICAL FIX)
         run: |
           adb wait-for-device
-          timeout 300 bash -c 'until adb shell getprop sys.boot_completed | grep -m 1 "1"; do sleep 5; done;'
-          adb shell input keyevent 82
 
-      # ----------------------------
-      # 10. Run tests
-      # ----------------------------
-      - name: Run instrumentation tests
-        run: ./gradlew clean connectedDebugAndroidTest
+          echo "Waiting for boot completion..."
+          boot_completed=""
+          timeout=300
 
-      # ----------------------------
-      # 11. Generate Allure report
-      # ----------------------------
-      - name: Generate Allure Report
-        if: always()
-        run: ./gradlew allureReport || true
+          while [[ "$boot_completed" != "1" && $timeout -gt 0 ]]; do
+            boot_completed=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            echo "Boot status: $boot_completed"
+            sleep 5
+            timeout=$((timeout-5))
+          done
 
-      # ----------------------------
-      # 12. Upload artifacts
-      # ----------------------------
-      - name: Upload Test Results
-        if: always()
+          if [[ "$boot_completed" != "1" ]]; then
+            echo "Emulator failed to boot in time"
+            exit 1
+          fi
+
+          adb devices
+
+      - name: Run Tests
+        run: |
+          ./gradlew clean test
+
+      - name: Generate Allure Results
+        run: |
+          ./gradlew allureReport || true
+
+      - name: Upload Reports
         uses: actions/upload-artifact@v4
         with:
-          name: android-test-results
+          name: test-reports
           path: |
-            app/build/reports/
-            app/build/outputs/androidTest-results/
-            app/build/allure-results/
+            **/build/reports/
+            **/allure-results/
+            **/build/allure-results/
