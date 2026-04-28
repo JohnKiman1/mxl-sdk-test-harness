@@ -35,22 +35,17 @@ jobs:
         uses: android-actions/setup-android@v3
 
       # ----------------------------
-      # 4. Create emulator (IMPORTANT FIXED CONFIG)
+      # 4. Accept SDK licenses + ensure tools
       # ----------------------------
-      - name: Create AVD
-        run: |
-          echo "no" | avdmanager create avd \
-            -n test \
-            -k "system-images;android-34;google_apis;x86_64" \
-            --device "pixel_6"
+      - name: Accept licenses
+        run: yes | sdkmanager --licenses
 
       # ----------------------------
-      # 5. Start emulator (CRITICAL FIX)
-      #    - headless
-      #    - disable snapshot
-      #    - wait for boot
+      # 5. Start Emulator (FULLY MANAGED)
+      #    - No manual AVD creation needed
+      #    - Handles boot wait internally
       # ----------------------------
-      - name: Start Emulator
+      - name: Run Android Instrumentation Tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -66,28 +61,24 @@ jobs:
             adb wait-for-device
             adb shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 5; done;'
             adb shell input keyevent 82
+            ./gradlew connectedAndroidTest
 
       # ----------------------------
-      # 6. Run tests
-      # ----------------------------
-      - name: Run Android Instrumentation Tests
-        run: ./gradlew connectedAndroidTest
-
-      # ----------------------------
-      # 7. Generate Allure report
+      # 6. Generate Allure Report (safe)
       # ----------------------------
       - name: Generate Allure Report
-        run: |
-          ./gradlew allureReport || true
+        if: always()
+        run: ./gradlew allureReport || true
 
       # ----------------------------
-      # 8. Upload test reports
+      # 7. Upload Test Reports
       # ----------------------------
-      - name: Upload Test Reports
+      - name: Upload Test Results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: android-test-results
           path: |
             app/build/reports/
-            app/build/allure-results/
             app/build/outputs/androidTest-results/
+            app/build/allure-results/
