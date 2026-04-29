@@ -60,13 +60,34 @@ jobs:
             echo "🚀 Running tests..."
             ./gradlew clean connectedAndroidTest --stacktrace || true
 
-            echo "📥 Pulling Allure results..."
-            adb pull /sdcard/allure-results ./allure-results || true
-            # Try common alternative locations
-            adb pull /data/data/$(adb shell pm list packages -3 | grep -oE '[a-zA-Z0-9.]+' | head -n 1)/files/allure-results ./allure-results || true
+            echo "🔍 Debugging Allure results on device..."
 
-            echo "📂 Listing pulled results:"
-            ls -la allure-results || echo "No Allure results folder found"
+            echo "→ Installed third-party packages:"
+            adb shell pm list packages -3
+
+            echo "→ Checking common Allure result locations:"
+            adb shell "ls -la /sdcard/allure-results 2>/dev/null || echo 'Not found: /sdcard/allure-results'"
+            adb shell "find /data/data -name 'allure-results' -type d 2>/dev/null || echo 'No allure-results folder found in /data/data'"
+
+            echo "📥 Pulling Allure results..."
+
+            # Pull from sdcard
+            adb pull /sdcard/allure-results ./allure-results || true
+
+            # Pull from app-specific data directory (most common)
+            PACKAGE=$(adb shell pm list packages -3 | head -n 1 | cut -d: -f2 | tr -d '\r')
+            if [ -n "$PACKAGE" ]; then
+              echo "→ Trying package: $PACKAGE"
+              adb pull "/data/data/$PACKAGE/files/allure-results" ./allure-results || true
+            fi
+
+            echo "📂 Final listing of pulled results:"
+            if [ -d "allure-results" ]; then
+              ls -la allure-results
+              echo "Number of result files: $(find allure-results -type f | wc -l)"
+            else
+              echo "No Allure results folder found"
+            fi
 
       - name: Upload Allure Results
         if: always()
