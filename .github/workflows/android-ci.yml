@@ -64,12 +64,9 @@ jobs:
             echo "📥 Pulling Allure results..."
             adb pull /sdcard/allure-results ./allure-results || true
 
-            # Safe package-based pull
+            # Safe single-line version for package pulling
             PACKAGE=$(adb shell pm list packages -3 | head -n 1 | cut -d: -f2 | tr -d '\r')
-            if [ -n "$PACKAGE" ]; then
-              echo "→ Trying package: $PACKAGE"
-              adb pull "/data/data/$PACKAGE/files/allure-results" ./allure-results || true
-            fi
+            [ -n "$PACKAGE" ] && echo "→ Trying package: $PACKAGE" && adb pull "/data/data/$PACKAGE/files/allure-results" ./allure-results || true
 
             echo "Final Allure status:"
             ls -la allure-results 2>/dev/null && echo "Allure results found" || echo "No Allure results folder"
