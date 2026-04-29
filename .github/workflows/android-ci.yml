@@ -10,16 +10,14 @@ permissions:
   pages: write
   id-token: write
 
-# ==========================================
-# 1. ANDROID TESTS (PRODUCE RESULTS ONLY)
-# ==========================================
 jobs:
   android-tests:
     name: Android Tests
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -29,7 +27,7 @@ jobs:
 
       - name: Enable KVM
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
@@ -40,6 +38,10 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_5
+          avd-name: ci_emulator
+          disable-animations: true
+          disable-linux-hw-accel: false
+          emulator-boot-timeout: 600
           emulator-options: >
             -no-window
             -no-audio
@@ -52,59 +54,63 @@ jobs:
             echo "🚀 Running Android tests..."
             ./gradlew clean connectedAndroidTest --stacktrace || true
 
+            echo "🔍 Debugging Allure results on device..."
+            adb shell pm list packages -3
+
+            echo "Checking Allure locations:"
+            adb shell "ls -la /sdcard/allure-results 2>/dev/null || echo 'Not found on sdcard'"
+            adb shell "find /data/data -name allure-results -type d 2>/dev/null || echo 'No allure-results folder found in /data/data'"
+
             echo "📥 Pulling Allure results..."
             adb pull /sdcard/allure-results ./allure-results || true
 
+            # Safe package-based pull
+            PACKAGE=$(adb shell pm list packages -3 | head -n 1 | cut -d: -f2 | tr -d '\r')
+            if [ -n "$PACKAGE" ]; then
+              echo "→ Trying package: $PACKAGE"
+              adb pull "/data/data/$PACKAGE/files/allure-results" ./allure-results || true
+            fi
+
+            echo "Final Allure status:"
+            ls -la allure-results 2>/dev/null && echo "Allure results found" || echo "No Allure results folder"
+
       - name: Upload Allure Results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: allure-results
           path: allure-results
+          retention-days: 7
 
 
-  # ==========================================
-  # 2. ALLURE REPORT (AGGREGATION)
-  # ==========================================
   allure-report:
-    name: Allure Report
+    name: Generate Allure Report
     runs-on: ubuntu-latest
     needs: android-tests
     if: always()
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Allure
-        run: |
-          wget https://github.com/allure-framework/allure2/releases/latest/download/allure-2.27.0.tgz
-          tar -zxvf allure-2.27.0.tgz
-          sudo mv allure-2.27.0 /opt/allure
-          sudo ln -s /opt/allure/bin/allure /usr/bin/allure
-
-      - name: Download results
+      - name: Download Allure Results
         uses: actions/download-artifact@v4
         with:
           name: allure-results
           path: allure-results
 
-      - name: Validate results
-        run: |
-          mkdir -p allure-results
-          ls -la allure-results || echo "No results found"
+      - name: Generate Allure Report
+        uses: simple-elf/allure-report-action@master
+        with:
+          allure_results: allure-results
+          gh_pages: false
+          report_name: Allure Test Report
 
-      - name: Generate report
-        run: allure generate allure-results --clean -o allure-report
-
-      - name: Upload report
+      - name: Upload Allure Report
         uses: actions/upload-artifact@v4
         with:
           name: allure-report
           path: allure-report
+          retention-days: 14
 
 
-  # ==========================================
-  # 3. DEPLOY (LIKE PLAYWRIGHT)
-  # ==========================================
   deploy:
     name: Deploy Report
     runs-on: ubuntu-latest
