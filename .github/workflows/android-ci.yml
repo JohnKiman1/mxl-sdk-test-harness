@@ -54,22 +54,21 @@ jobs:
             echo "Running instrumented tests..."
             ./gradlew clean connectedAndroidTest --stacktrace
 
-            echo "📥 Pulling Allure results..."
-            # Try common locations - adjust <your.package.name> if needed
+            echo "📥 Pulling Allure results from device..."
+            # Pull from common locations
             adb pull /sdcard/allure-results ./allure-results || true
-            adb pull /data/data/com.mxl.test/files/allure-results ./allure-results || true   # ← Change package name
+            adb pull /data/data/$(adb shell pm list packages | grep -oE 'com\.[^ ]+' | head -1)/files/allure-results ./allure-results || true
 
-      # Generate Allure Report
+            # List what we actually pulled (for debugging)
+            ls -la allure-results || echo "No allure-results folder found"
+
       - name: Generate Allure Report
-        if: always()                    # Important: run even if tests fail
-        run: |
-          if [ -d "allure-results" ] && [ "$(ls -A allure-results)" ]; then
-            echo "Generating Allure report..."
-            docker run --rm -v $(pwd):/workdir --workdir /workdir ghcr.io/allure-framework/allure:latest generate allure-results --clean -o allure-report
-          else
-            echo "⚠️ No Allure results found. Skipping report generation."
-            mkdir -p allure-report
-          fi
+        if: always()
+        uses: simple-elf/allure-report-action@master
+        with:
+          allure_results: allure-results
+          gh_pages: false
+          report_name: Allure Report
 
       - name: Upload Allure Report
         if: always()
