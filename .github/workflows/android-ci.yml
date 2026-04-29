@@ -17,6 +17,10 @@ jobs:
       pages: write
       id-token: write
 
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
       # =========================
       # 1. Checkout
@@ -100,11 +104,11 @@ jobs:
           else
             echo "⚠️ No allure-results found, generating empty report"
             mkdir -p allure-report
-            echo "<html><body><h1>No test results available</h1></body></html>" > allure-report/index.html
+            echo "<html><body><h1>No test results available</h1><p>Tests passed but no Allure results were generated. This may be because Allure is not configured in your test setup.</p></body></html>" > allure-report/index.html
           fi
 
       # =========================
-      # 8. Deploy to GitHub Pages (Method 1: Official GitHub Action)
+      # 8. Deploy to GitHub Pages
       # =========================
       - name: Upload Pages Artifact
         if: always()
@@ -113,25 +117,11 @@ jobs:
           path: allure-report
 
       - name: Deploy to GitHub Pages
+        id: deployment
         if: always()
         uses: actions/deploy-pages@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-
-      # =========================
-      # 8b. Alternative Deploy Method (using peaceiris - uncomment if above doesn't work)
-      # =========================
-      # - name: Deploy to GitHub Pages (Alternative)
-      #   if: always()
-      #   uses: peaceiris/actions-gh-pages@v4
-      #   with:
-      #     github_token: ${{ secrets.GITHUB_TOKEN }}
-      #     publish_branch: gh-pages
-      #     publish_dir: allure-report
-      #     force_orphan: true
-      #     user_name: 'github-actions[bot]'
-      #     user_email: 'github-actions[bot]@users.noreply.github.com'
-      #     commit_message: 'Deploy Allure report to GitHub Pages'
 
       # =========================
       # 9. Artifacts
