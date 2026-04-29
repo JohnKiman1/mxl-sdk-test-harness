@@ -12,22 +12,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout code
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Setup Java
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      # 3. Setup Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # 4. Install required SDK components
       - name: Install SDK packages
         run: |
           sdkmanager --install \
@@ -36,7 +32,6 @@ jobs:
             "system-images;android-34;google_apis;x86_64" \
             "emulator"
 
-      # 5. Create AVD (IMPORTANT)
       - name: Create AVD
         run: |
           echo "no" | avdmanager create avd \
@@ -44,7 +39,7 @@ jobs:
             -k "system-images;android-34;google_apis;x86_64" \
             --force
 
-      # 6. Run emulator + tests (ALL-IN-ONE STEP)
+      # === FIXED & IMPROVED STEP ===
       - name: Run Emulator and Tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -61,31 +56,29 @@ jobs:
             -gpu swiftshader_indirect
             -no-boot-anim
           script: |
-            echo "Waiting for emulator..."
+            set -e  # Fail fast on any error
+
+            echo "Waiting for device..."
             adb wait-for-device
 
             echo "Waiting for full boot..."
-            until adb shell getprop sys.boot_completed | grep -m 1 '1'; do
-              sleep 5
-            done
+            timeout 240s bash << 'EOF'
+              while true; do
+                boot_status=$(adb shell getprop sys.boot_completed 2>/dev/null || echo "0")
+                if [[ "$boot_status" == "1" ]]; then
+                  echo "✅ Emulator fully booted!"
+                  break
+                fi
+                echo "Still booting... (sys.boot_completed = $boot_status)"
+                sleep 5
+              done
+            EOF
 
-            echo "Emulator ready!"
-            adb devices
+            echo "Emulator is ready!"
+            adb devices -l
 
-            # Run your tests
-            ./gradlew clean connectedAndroidTest || true
+            # Optional: Wake/unlock screen
+            adb shell input keyevent 82
 
-      # 7. Generate Allure report (optional)
-      - name: Generate Allure Report
-        run: |
-          ./gradlew allureReport || true
-
-      # 8. Upload reports (optional but recommended)
-      - name: Upload Reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-test-reports
-          path: |
-            **/build/reports/**
-            **/allure-results/**
-            **/build/allure-results/**
+            echo "Running tests..."
+            ./gradlew clean connectedAndroidTest --stacktrace
