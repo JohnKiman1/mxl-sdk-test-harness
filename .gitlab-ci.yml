@@ -1,11 +1,11 @@
 stages:
   - build
   - test
-  - report
 
 variables:
   GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle"
   ANDROID_SDK_ROOT: "/sdk"
+  GRADLE_OPTS: "-Dorg.gradle.daemon=false"
 
 # =========================
 # 1. BUILD STAGE
@@ -13,23 +13,23 @@ variables:
 build:
   stage: build
   image: gradle:8.7-jdk17
+
   script:
     - ./gradlew clean assembleDebug
+
   artifacts:
+    when: always
     paths:
       - app/build/outputs/
     expire_in: 7 days
 
+
 # =========================
-# 2. INSTRUMENTATION TESTS + COVERAGE
+# 2. TEST + COVERAGE STAGE
 # =========================
 android_test:
   stage: test
   image: gradle:8.7-jdk17
-
-  variables:
-    ANDROID_SDK_ROOT: "/sdk"
-    GRADLE_OPTS: "-Dorg.gradle.daemon=false"
 
   before_script:
     - apt-get update && apt-get install -y wget unzip
@@ -41,7 +41,7 @@ android_test:
     - $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-36"
 
   script:
-    # ✔ RUN TESTS + GENERATE COVERAGE (KEY FIX)
+    # ✅ CORE COMMAND: tests + coverage
     - ./gradlew clean connectedDebugAndroidTest createDebugCoverageReport
 
   artifacts:
@@ -49,21 +49,4 @@ android_test:
     paths:
       - app/build/reports/
       - app/build/outputs/
-    expire_in: 7 days
-
-# =========================
-# 3. REPORT STAGE (COVERAGE ONLY)
-# =========================
-report:
-  stage: report
-  image: alpine:latest
-
-  script:
-    - echo "📊 Coverage report already generated in build artifacts"
-    - ls -R app/build/reports || true
-
-  artifacts:
-    when: always
-    paths:
-      - app/build/reports/
     expire_in: 7 days
