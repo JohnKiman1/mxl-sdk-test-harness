@@ -44,7 +44,7 @@ jobs:
           restore-keys: gradle-
 
       # =========================
-      # 4. KVM
+      # 4. Enable KVM
       # =========================
       - name: Enable KVM
         run: |
@@ -53,7 +53,7 @@ jobs:
           sudo udevadm trigger
 
       # =========================
-      # 5. Get gh-pages history
+      # 5. Fetch Allure History (SAFE)
       # =========================
       - name: Get Allure History
         continue-on-error: true
@@ -61,6 +61,10 @@ jobs:
         with:
           ref: gh-pages
           path: allure-history
+
+      # Ensure folder exists (IMPORTANT FIX)
+      - name: Prepare Allure History Folder
+        run: mkdir -p allure-history
 
       # =========================
       # 6. Emulator + Tests
@@ -92,30 +96,32 @@ jobs:
             echo "📥 Creating Allure folder..."
             mkdir -p allure-results
 
-            # OPTIONAL: only works if you configured Allure correctly in app
+            # SAFE: prevent failure if file doesn't exist
             adb pull /sdcard/allure-results ./allure-results || true
 
             echo "📊 Allure files:"
             find allure-results || true
 
-            if [ $TEST_EXIT -ne 0 ]; then
+            # IMPORTANT FIX: safe exit handling
+            if [ "$TEST_EXIT" -ne 0 ]; then
               echo "❌ Tests failed"
               exit $TEST_EXIT
             fi
 
       # =========================
-      # 7. Allure Report
+      # 7. Generate Allure Report
       # =========================
       - name: Generate Allure Report
         if: always()
-        uses: simple-elf/allure-report-action@master
+        uses: simple-elf/allure-report-action@v1.7
         with:
           allure_results: allure-results
           allure_report: allure-report
           allure_history: allure-history
+          keep_reports: 20
 
       # =========================
-      # 8. Deploy Pages
+      # 8. Deploy GitHub Pages
       # =========================
       - name: Deploy to GitHub Pages
         if: always()
@@ -124,6 +130,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
           publish_dir: allure-history
+          force_orphan: true
 
       # =========================
       # 9. Upload artifacts
