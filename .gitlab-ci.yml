@@ -1,29 +1,24 @@
-name: Android CI (Enterprise Test Harness)
+name: Android CI (Stable Test Harness)
 
 on:
   push:
     branches: [ main, fix/** ]
   pull_request:
 
-permissions:
-  contents: write
-  pages: write
-  id-token: write
-
 jobs:
   android-tests:
-    name: Android Tests + Coverage
+    name: Android Emulator Tests + Coverage
     runs-on: ubuntu-latest
 
     steps:
       # =========================
-      # 1. Checkout
+      # Checkout code
       # =========================
       - name: Checkout
         uses: actions/checkout@v4
 
       # =========================
-      # 2. Java Setup
+      # Setup Java
       # =========================
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -32,7 +27,7 @@ jobs:
           java-version: 17
 
       # =========================
-      # 3. Enable KVM (faster emulator)
+      # Enable KVM (faster emulator)
       # =========================
       - name: Enable KVM
         run: |
@@ -41,9 +36,9 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       # =========================
-      # 4. Emulator + Tests
+      # Run Emulator + Tests
       # =========================
-      - name: Run Emulator + Tests
+      - name: Run Android Tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -66,7 +61,7 @@ jobs:
             echo "🚀 Running Android instrumentation tests..."
             ./gradlew clean connectedDebugAndroidTest createDebugCoverageReport
 
-            echo "📊 Coverage report generated:"
+            echo "📊 Coverage report location:"
             ls -R app/build/reports/coverage/androidTest/debug/connected || true
 
             echo "📦 Collecting CI artifacts..."
@@ -75,10 +70,10 @@ jobs:
             cp -r app/build/reports ci-artifacts/ || true
             cp -r app/build/outputs/androidTest-results ci-artifacts/ || true
 
-            echo "✔ Test + coverage stage complete"
+            echo "✔ CI pipeline completed successfully"
 
       # =========================
-      # 5. Upload Artifacts
+      # Upload artifacts
       # =========================
       - name: Upload Test Artifacts
         if: always()
