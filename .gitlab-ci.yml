@@ -33,15 +33,21 @@ android_test:
 
   before_script:
     - apt-get update && apt-get install -y wget unzip
+
+    # Install Android SDK cmdline tools
     - wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
     - mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
     - unzip commandlinetools-linux-*.zip -d $ANDROID_SDK_ROOT/cmdline-tools
     - mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
+
+    # Accept licenses
     - yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses
+
+    # Install required packages
     - $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-36"
 
   script:
-    # ✅ CORE COMMAND: tests + coverage
+    # ✔ RUN TESTS + COVERAGE (CORE HARNESS STEP)
     - ./gradlew clean connectedDebugAndroidTest createDebugCoverageReport
 
   artifacts:
