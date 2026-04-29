@@ -80,57 +80,7 @@ jobs:
           emulator-boot-timeout: 900
           emulator-options: -no-window -no-audio -no-snapshot -gpu swiftshader_indirect
           script: |
-            set -e
-            
-            echo "=============================="
-            echo "🚀 EMULATOR START CHECK"
-            echo "=============================="
-            
-            adb devices -l
-            
-            echo "Waiting for device..."
-            adb wait-for-device
-            
-            echo "Waiting for boot completion..."
-            
-            # Use a single line while loop with semicolons
-            BOOT=""; COUNT=0; while [ "$BOOT" != "1" ] && [ $COUNT -lt 60 ]; do BOOT=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || echo ""); echo "boot status: $BOOT (attempt $((COUNT+1))/60)"; if [ "$BOOT" != "1" ]; then sleep 5; COUNT=$((COUNT+1)); fi; done
-            
-            if [ "$BOOT" != "1" ]; then
-              echo "❌ Emulator failed to boot after 60 attempts"
-              adb devices -l
-              exit 1
-            fi
-            
-            echo "✅ Emulator booted successfully"
-            
-            adb shell input keyevent 82 || true
-            
-            echo "=============================="
-            echo "🚀 RUNNING TESTS"
-            echo "=============================="
-            
-            ./gradlew clean connectedAndroidTest createDebugCoverageReport --no-daemon --stacktrace
-            TEST_EXIT=$?
-            
-            echo "=============================="
-            echo "📊 TEST EXIT CODE: $TEST_EXIT"
-            echo "=============================="
-            
-            mkdir -p allure-results
-            
-            echo "Pulling allure results..."
-            adb pull /sdcard/allure-results ./allure-results || true
-            
-            echo "Allure contents:"
-            ls -R allure-results || true
-            
-            if [ "$TEST_EXIT" -eq 0 ]; then
-              echo "✅ TESTS PASSED"
-            else
-              echo "❌ TESTS FAILED"
-              exit $TEST_EXIT
-            fi
+            set -e && echo "==============================" && echo "🚀 EMULATOR START CHECK" && echo "==============================" && adb devices -l && echo "Waiting for device..." && adb wait-for-device && echo "Waiting for boot completion..." && BOOT=""; COUNT=0; while [ "$BOOT" != "1" ] && [ $COUNT -lt 60 ]; do BOOT=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || echo ""); echo "boot status: $BOOT (attempt $((COUNT+1))/60)"; if [ "$BOOT" != "1" ]; then sleep 5; COUNT=$((COUNT+1)); fi; done; if [ "$BOOT" != "1" ]; then echo "❌ Emulator failed to boot after 60 attempts"; adb devices -l; exit 1; fi; echo "✅ Emulator booted successfully"; adb shell input keyevent 82 || true; echo "=============================="; echo "🚀 RUNNING TESTS"; echo "=============================="; ./gradlew clean connectedAndroidTest createDebugCoverageReport --no-daemon --stacktrace; TEST_EXIT=$?; echo "=============================="; echo "📊 TEST EXIT CODE: $TEST_EXIT"; echo "=============================="; mkdir -p allure-results; echo "Pulling allure results..."; adb pull /sdcard/allure-results ./allure-results || true; echo "Allure contents:"; ls -R allure-results || true; if [ "$TEST_EXIT" -eq 0 ]; then echo "✅ TESTS PASSED"; else echo "❌ TESTS FAILED"; exit $TEST_EXIT; fi
 
       # =========================
       # 7. Allure Report
