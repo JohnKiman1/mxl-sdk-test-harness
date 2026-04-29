@@ -24,7 +24,7 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # === IMPORTANT: Enable KVM for hardware acceleration ===
+      # Enable KVM for hardware acceleration (important for speed)
       - name: Enable KVM Group Permissions
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -48,7 +48,7 @@ jobs:
             --force \
             --device "pixel_5"
 
-      # === Main Emulator + Test Step ===
+      # === FIXED: Run Emulator and Tests ===
       - name: Run Emulator and Tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -58,7 +58,7 @@ jobs:
           profile: pixel_5
           avd-name: ci_emulator
           disable-animations: true
-          disable-linux-hw-accel: false   # Let it use KVM now
+          disable-linux-hw-accel: false
           emulator-options: >
             -no-window
             -no-audio
@@ -71,22 +71,22 @@ jobs:
             echo "Waiting for device to be online..."
             adb wait-for-device
 
-            echo "Waiting for full boot (this can take 60-120 seconds)..."
-            timeout 300s bash << 'EOF'
+            echo "Waiting for full boot..."
+            timeout 300s sh -c '
               while true; do
                 boot_status=$(adb shell getprop sys.boot_completed 2>/dev/null || echo "0")
-                if [[ "$boot_status" == "1" ]]; then
+                if [ "$boot_status" = "1" ]; then
                   echo "✅ Emulator fully booted!"
                   break
                 fi
                 echo "Still booting... (boot_completed = $boot_status)"
                 sleep 8
               done
-            EOF
+            '
 
             echo "Emulator ready!"
             adb devices -l
-            adb shell input keyevent 82   # Wake screen
+            adb shell input keyevent 82
 
             echo "Running connected tests..."
             ./gradlew clean connectedAndroidTest --stacktrace
