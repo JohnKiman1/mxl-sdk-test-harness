@@ -1,4 +1,4 @@
-name: Android CI (Stable Test Harness)
+name: Android Test Harness CI
 
 on:
   push:
@@ -6,79 +6,55 @@ on:
   pull_request:
 
 jobs:
-  android-tests:
-    name: Android Emulator Tests + Coverage
+  android-test:
     runs-on: ubuntu-latest
 
     steps:
       # =========================
-      # Checkout code
+      # 1. Checkout
       # =========================
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
       # =========================
-      # Setup Java
+      # 2. Setup Java
       # =========================
-      - name: Setup Java
+      - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
       # =========================
-      # Enable KVM (faster emulator)
+      # 3. Setup Android Emulator + Run Tests
       # =========================
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      # =========================
-      # Run Emulator + Tests
-      # =========================
-      - name: Run Android Tests
+      - name: Run Instrumentation Tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
           target: google_apis
           arch: x86_64
           profile: pixel_5
-          avd-name: ci_emulator
-          disable-animations: true
-          emulator-boot-timeout: 600
-          emulator-options: >
-            -no-window
-            -no-audio
-            -no-snapshot
-            -gpu swiftshader_indirect
-            -no-boot-anim
-
           script: |
-            set -e
-
-            echo "🚀 Running Android instrumentation tests..."
-            ./gradlew clean connectedDebugAndroidTest createDebugCoverageReport
-
-            echo "📊 Coverage report location:"
-            ls -R app/build/reports/coverage/androidTest/debug/connected || true
-
-            echo "📦 Collecting CI artifacts..."
-            mkdir -p ci-artifacts
-
-            cp -r app/build/reports ci-artifacts/ || true
-            cp -r app/build/outputs/androidTest-results ci-artifacts/ || true
-
-            echo "✔ CI pipeline completed successfully"
+            echo "🚀 Running Android tests..."
+            ./gradlew clean connectedAndroidTest createDebugCoverageReport
 
       # =========================
-      # Upload artifacts
+      # 4. Upload Coverage Report
       # =========================
-      - name: Upload Test Artifacts
-        if: always()
+      - name: Upload Coverage Report
         uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: android-test-artifacts
-          path: ci-artifacts
-          retention-days: 7
+          name: coverage-report
+          path: app/build/reports/coverage/androidTest/debug/connected/
+
+      # =========================
+      # 5. OPTIONAL: Upload Test Results (safe fallback)
+      # =========================
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-test-results
+          path: app/build/outputs/androidTest-results/
