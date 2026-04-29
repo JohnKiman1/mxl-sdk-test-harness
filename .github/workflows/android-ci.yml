@@ -70,10 +70,6 @@ jobs:
 
       # =========================
       # 7. Emulator + Tests
-      # FIX: delegates to ci-test.sh — the emulator runner splits inline
-      #      script lines into separate sh -c calls, which breaks multi-line
-      #      constructs (if/fi) and loses $? between lines.
-      #      A file-based script runs entirely in one shell.
       # =========================
       - name: Run Emulator and Tests
         uses: reactivecircus/android-emulator-runner@v2
@@ -89,17 +85,25 @@ jobs:
           script: ./ci-test.sh
 
       # =========================
-      # 8. Allure Report
-      # FIX: pinned to v1.9 instead of @master
+      # 8. Generate Allure Report
+      #
+      # FIX: replaced simple-elf/allure-report-action entirely.
+      #      v1.9 uses FROM openjdk:8-jre-alpine which was removed from
+      #      Docker Hub — it fails at the image build step with "not found".
+      #      @master has the same base image problem on modern runners.
+      #
+      #      Replaced with the official allure-framework/allure-report-action
+      #      which uses a current base image and is actively maintained.
       # =========================
       - name: Generate Allure Report
         if: always()
-        uses: simple-elf/allure-report-action@v1.9
+        uses: allure-framework/allure-report-action@v1
         with:
-          allure_results: allure-results
-          allure_report: allure-report
-          allure_history: allure-history
-          keep_reports: 20
+          allure-results: allure-results
+          allure-report: allure-report
+          gh-pages: allure-history
+          allure-history: allure-history
+          keep-reports: 20
 
       # =========================
       # 9. Deploy Pages
