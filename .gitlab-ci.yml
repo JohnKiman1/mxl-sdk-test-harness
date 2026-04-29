@@ -5,6 +5,7 @@ stages:
 
 variables:
   GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle"
+  ANDROID_SDK_ROOT: "/sdk"
 
 # =========================
 # 1. BUILD STAGE
@@ -13,63 +14,56 @@ build:
   stage: build
   image: gradle:8.7-jdk17
   script:
-    - ./gradlew assembleDebug
+    - ./gradlew clean assembleDebug
   artifacts:
     paths:
       - app/build/outputs/
+    expire_in: 7 days
 
 # =========================
-# 2. INSTRUMENTATION TESTS (EMULATOR)
+# 2. INSTRUMENTATION TESTS + COVERAGE
 # =========================
 android_test:
   stage: test
   image: gradle:8.7-jdk17
 
-  services:
-    - name: budtmo/docker-android-emulator:latest
-      alias: emulator
-
   variables:
-    ANDROID_HOME: "/sdk"
+    ANDROID_SDK_ROOT: "/sdk"
+    GRADLE_OPTS: "-Dorg.gradle.daemon=false"
 
   before_script:
     - apt-get update && apt-get install -y wget unzip
     - wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-    - unzip commandlinetools-linux-*.zip -d $ANDROID_HOME
-    - yes | $ANDROID_HOME/cmdline-tools/bin/sdkmanager --licenses
-    - $ANDROID_HOME/cmdline-tools/bin/sdkmanager "platform-tools" "platforms;android-36"
+    - mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+    - unzip commandlinetools-linux-*.zip -d $ANDROID_SDK_ROOT/cmdline-tools
+    - mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
+    - yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses
+    - $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-36"
 
   script:
-    - ./gradlew connectedAndroidTest
+    # ✔ RUN TESTS + GENERATE COVERAGE (KEY FIX)
+    - ./gradlew clean connectedDebugAndroidTest createDebugCoverageReport
 
   artifacts:
     when: always
     paths:
-      - app/build/outputs/androidTest-results/
       - app/build/reports/
+      - app/build/outputs/
     expire_in: 7 days
 
 # =========================
-# 3. ALLURE REPORT GENERATION
+# 3. REPORT STAGE (COVERAGE ONLY)
 # =========================
-allure_report:
+report:
   stage: report
-  image: openjdk:17
-
-  before_script:
-    - apt-get update && apt-get install -y wget unzip curl
-    - wget https://github.com/allure-framework/allure2/releases/latest/download/allure-2.27.0.tgz
-    - tar -xvzf allure-2.27.0.tgz
-    - mv allure-2.27.0 /allure
+  image: alpine:latest
 
   script:
-    - mkdir -p build/allure-results
-    - cp -r app/build/outputs/androidTest-results/connected/* build/allure-results/ || true
-    - /allure/bin/allure generate build/allure-results -o build/allure-report --clean
+    - echo "📊 Coverage report already generated in build artifacts"
+    - ls -R app/build/reports || true
 
   artifacts:
     when: always
     paths:
-      - build/allure-report/
-      - build/allure-results/
+      - app/build/reports/
     expire_in: 7 days

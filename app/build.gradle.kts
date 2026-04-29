@@ -19,6 +19,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            // ✅ ENABLE CODE COVERAGE FOR CI
+            enableUnitTestCoverage = true
+            enableAndroidTestCoverage = true
+        }
+
         release {
             isMinifyEnabled = false
             proguardFiles(
@@ -37,7 +43,7 @@ android {
         compose = true
     }
 
-    // Fix META-INF conflicts (JUnit / Allure / dependencies)
+    // Fix META-INF conflicts (JUnit / dependencies)
     packaging {
         resources {
             excludes += setOf(
@@ -51,9 +57,13 @@ android {
         }
     }
 
-    // Optional but useful for CI stability
+    // CI stability
     testOptions {
         animationsDisabled = true
+
+        unitTests {
+            isIncludeAndroidResources = true
+        }
     }
 }
 
@@ -78,7 +88,7 @@ dependencies {
     testImplementation(libs.junit)
 
     // =========================
-    // INSTRUMENTATION TESTS (EMULATOR / CI)
+    // INSTRUMENTATION TESTS
     // =========================
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -87,7 +97,7 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
 
     // =========================
-    // ALLURE (CORRECT FOR JUNIT4 ANDROID TESTS)
+    // ALLURE (optional for now)
     // =========================
     androidTestImplementation("io.qameta.allure:allure-kotlin-commons:2.4.0")
     androidTestImplementation("io.qameta.allure:allure-kotlin-junit4:2.4.0")
