@@ -53,7 +53,7 @@ jobs:
           sudo udevadm trigger
 
       # =========================
-      # 5. Fetch Allure History (SAFE)
+      # 5. Get Allure History (safe)
       # =========================
       - name: Get Allure History
         continue-on-error: true
@@ -62,7 +62,6 @@ jobs:
           ref: gh-pages
           path: allure-history
 
-      # Ensure folder exists (IMPORTANT FIX)
       - name: Prepare Allure History Folder
         run: mkdir -p allure-history
 
@@ -96,29 +95,27 @@ jobs:
             echo "📥 Creating Allure folder..."
             mkdir -p allure-results
 
-            # SAFE: prevent failure if file doesn't exist
             adb pull /sdcard/allure-results ./allure-results || true
 
             echo "📊 Allure files:"
             find allure-results || true
 
-            # IMPORTANT FIX: safe exit handling
             if [ "$TEST_EXIT" -ne 0 ]; then
               echo "❌ Tests failed"
               exit $TEST_EXIT
             fi
 
       # =========================
-      # 7. Generate Allure Report
+      # 7. Generate Allure Report (FIXED - no Docker)
       # =========================
+      - name: Install Allure CLI
+        if: always()
+        run: npm install -g allure-commandline --save-dev
+
       - name: Generate Allure Report
         if: always()
-        uses: simple-elf/allure-report-action@v1.7
-        with:
-          allure_results: allure-results
-          allure_report: allure-report
-          allure_history: allure-history
-          keep_reports: 20
+        run: |
+          allure generate allure-results -o allure-report --clean || true
 
       # =========================
       # 8. Deploy GitHub Pages
@@ -129,11 +126,11 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
-          publish_dir: allure-history
+          publish_dir: allure-report
           force_orphan: true
 
       # =========================
-      # 9. Upload artifacts
+      # 9. Upload Artifacts
       # =========================
       - name: Upload Allure Report
         if: always()
