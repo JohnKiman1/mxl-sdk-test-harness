@@ -93,17 +93,8 @@ jobs:
             
             echo "Waiting for boot completion..."
             
-            # Fixed: Proper while loop syntax
-            BOOT=""
-            COUNT=0
-            while [ "$BOOT" != "1" ] && [ $COUNT -lt 60 ]; do
-              BOOT=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || echo "")
-              echo "boot status: $BOOT (attempt $((COUNT+1))/60)"
-              if [ "$BOOT" != "1" ]; then
-                sleep 5
-                COUNT=$((COUNT+1))
-              fi
-            done
+            # Use a single line while loop with semicolons
+            BOOT=""; COUNT=0; while [ "$BOOT" != "1" ] && [ $COUNT -lt 60 ]; do BOOT=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || echo ""); echo "boot status: $BOOT (attempt $((COUNT+1))/60)"; if [ "$BOOT" != "1" ]; then sleep 5; COUNT=$((COUNT+1)); fi; done
             
             if [ "$BOOT" != "1" ]; then
               echo "❌ Emulator failed to boot after 60 attempts"
