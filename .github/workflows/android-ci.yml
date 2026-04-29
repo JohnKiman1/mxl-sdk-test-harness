@@ -10,43 +10,36 @@ on:
 jobs:
   android-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
+      # =========================
+      # 1. Checkout
+      # =========================
       - name: Checkout
         uses: actions/checkout@v4
 
+      # =========================
+      # 2. Setup Java
+      # =========================
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Enable KVM Group Permissions
+      # =========================
+      # 3. Enable KVM (faster emulator)
+      # =========================
+      - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Install SDK packages
-        run: |
-          sdkmanager --install \
-            "platform-tools" \
-            "platforms;android-34" \
-            "system-images;android-34;google_apis;x86_64" \
-            "emulator" \
-            "build-tools;36.0.0"
-
-      - name: Create AVD
-        run: |
-          echo "no" | avdmanager create avd \
-            -n ci_emulator \
-            -k "system-images;android-34;google_apis;x86_64" \
-            --force \
-            --device "pixel_5"
-
+      # =========================
+      # 4. Run Emulator + Tests
+      # =========================
       - name: Run Emulator and Tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -56,39 +49,84 @@ jobs:
           profile: pixel_5
           avd-name: ci_emulator
           disable-animations: true
-          disable-linux-hw-accel: false
+          emulator-boot-timeout: 600
           emulator-options: >
-            -no-window
-            -no-audio
-            -no-snapshot
-            -gpu swiftshader_indirect
-            -no-boot-anim
+            -no-window -no-audio -no-snapshot
+            -gpu swiftshader_indirect -no-boot-anim
           script: |
             set -e
 
-            echo "Waiting for device..."
+            echo "✅ Emulator booted"
             adb wait-for-device
+            adb shell input keyevent 82 || true
 
-            echo "Waiting for full boot..."
-            timeout 300s sh -c "
-              while true; do
-                if [ \"\$(adb shell getprop sys.boot_completed 2>/dev/null || echo 0)\" = \"1\" ]; then
-                  echo \"✅ Emulator fully booted!\"
-                  break
-                fi
-                echo \"Still booting...\"
-                sleep 8
-              done
-            "
+            echo "🚀 Running instrumented tests..."
+            ./gradlew clean connectedAndroidTest createDebugCoverageReport --no-daemon --stacktrace
 
-            echo "Emulator ready!"
-            adb devices -l
-            adb shell input keyevent 82
+            echo "📥 Pulling Allure results..."
 
-            echo "Running instrumented tests..."
-            ./gradlew clean connectedAndroidTest --stacktrace
-
-            echo "Pulling Allure results (if any)..."
-            rm -rf allure-results
             mkdir -p allure-results
+
+            # Try common locations safely
             adb pull /sdcard/allure-results ./allure-results || true
+
+            PACKAGE=$(adb shell pm list packages | grep -oE 'com\.[^ ]+' | head -1 | tr -d '\r')
+            if [ -n "$PACKAGE" ]; then
+              adb pull /data/data/$PACKAGE/files/allure-results ./allure-results || true
+            fi
+
+            echo "📂 Allure contents:"
+            ls -la allure-results || echo "No allure-results found"
+
+      # =========================
+      # 5. Generate Allure Report
+      # =========================
+      - name: Generate Allure Report
+        if: always()
+        uses: simple-elf/allure-report-action@master
+        with:
+          allure_results: allure-results
+          allure_report: allure-report
+          gh_pages: allure-history
+
+      # =========================
+      # 6. Deploy to GitHub Pages
+      # =========================
+      - name: Deploy to GitHub Pages
+        if: always()
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: allure-history
+
+      # =========================
+      # 7. Upload artifacts (backup)
+      # =========================
+      - name: Upload Allure Report Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report
+          path: allure-report
+          retention-days: 30
+
+      - name: Upload Coverage Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: app/build/reports/coverage/
+
+      # =========================
+      # 8. Show report link
+      # =========================
+      - name: Add Report Link to Summary
+        if: always()
+        run: |
+          REPORT_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+          
+          echo "## 📊 Test Report" >> $GITHUB_STEP_SUMMARY
+          echo "[🔗 View Allure Report]($REPORT_URL)" >> $GITHUB_STEP_SUMMARY
+
+          echo "Report available at: $REPORT_URL"
