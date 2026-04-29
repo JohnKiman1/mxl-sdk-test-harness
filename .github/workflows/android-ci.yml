@@ -24,22 +24,31 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      # === IMPORTANT: Enable KVM for hardware acceleration ===
+      - name: Enable KVM Group Permissions
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
       - name: Install SDK packages
         run: |
           sdkmanager --install \
             "platform-tools" \
             "platforms;android-34" \
             "system-images;android-34;google_apis;x86_64" \
-            "emulator"
+            "emulator" \
+            "build-tools;36.0.0"
 
       - name: Create AVD
         run: |
           echo "no" | avdmanager create avd \
             -n ci_emulator \
             -k "system-images;android-34;google_apis;x86_64" \
-            --force
+            --force \
+            --device "pixel_5"
 
-      # === FIXED & IMPROVED STEP ===
+      # === Main Emulator + Test Step ===
       - name: Run Emulator and Tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -49,6 +58,7 @@ jobs:
           profile: pixel_5
           avd-name: ci_emulator
           disable-animations: true
+          disable-linux-hw-accel: false   # Let it use KVM now
           emulator-options: >
             -no-window
             -no-audio
@@ -56,29 +66,27 @@ jobs:
             -gpu swiftshader_indirect
             -no-boot-anim
           script: |
-            set -e  # Fail fast on any error
+            set -e
 
-            echo "Waiting for device..."
+            echo "Waiting for device to be online..."
             adb wait-for-device
 
-            echo "Waiting for full boot..."
-            timeout 240s bash << 'EOF'
+            echo "Waiting for full boot (this can take 60-120 seconds)..."
+            timeout 300s bash << 'EOF'
               while true; do
                 boot_status=$(adb shell getprop sys.boot_completed 2>/dev/null || echo "0")
                 if [[ "$boot_status" == "1" ]]; then
                   echo "✅ Emulator fully booted!"
                   break
                 fi
-                echo "Still booting... (sys.boot_completed = $boot_status)"
-                sleep 5
+                echo "Still booting... (boot_completed = $boot_status)"
+                sleep 8
               done
             EOF
 
-            echo "Emulator is ready!"
+            echo "Emulator ready!"
             adb devices -l
+            adb shell input keyevent 82   # Wake screen
 
-            # Optional: Wake/unlock screen
-            adb shell input keyevent 82
-
-            echo "Running tests..."
+            echo "Running connected tests..."
             ./gradlew clean connectedAndroidTest --stacktrace
