@@ -16,24 +16,15 @@ jobs:
       contents: write
 
     steps:
-      # =========================
-      # 1. Checkout
-      # =========================
       - name: Checkout
         uses: actions/checkout@v4
 
-      # =========================
-      # 2. Setup Java
-      # =========================
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      # =========================
-      # 3. Cache Gradle
-      # =========================
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
@@ -43,18 +34,20 @@ jobs:
           key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: gradle-
 
-      # =========================
-      # 4. Enable KVM
-      # =========================
       - name: Enable KVM
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-kvm.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      # =========================
-      # 5. Run Emulator + Tests
-      # =========================
+      - name: Get Allure History
+        if: always()
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          ref: gh-pages
+          path: allure-history
+
       - name: Run Emulator and Tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -62,45 +55,34 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_5
-          avd-name: ci_emulator
           disable-animations: true
           emulator-boot-timeout: 600
           emulator-options: >
-            -no-window -no-audio -no-snapshot -gpu swiftshader_indirect -no-boot-anim
+            -no-window -no-audio -no-snapshot -gpu swiftshader_indirect -no-boot-anim -no-metrics
           script: |
-            echo "✅ Emulator booted"
+            adb kill-server
+            adb start-server
             adb wait-for-device
-            adb shell input keyevent 82 || true
 
             echo "🚀 Running tests..."
 
-            ./gradlew clean connectedAndroidTest createDebugCoverageReport \
-              --no-daemon --stacktrace || TESTS_FAILED=true
+            ./gradlew clean connectedAndroidTest createDebugCoverageReport --no-daemon --stacktrace || TESTS_FAILED=true
 
             echo "📥 Pulling Allure results..."
             mkdir -p allure-results
 
             adb pull /sdcard/allure-results ./allure-results || true
+            adb pull /data/data/com.your.real.package/files/allure-results ./allure-results || true
 
             RESULT_COUNT=$(find allure-results -name "*.json" 2>/dev/null | wc -l)
-            echo "📊 Found $RESULT_COUNT Allure result file(s)"
-
-            if [ "$RESULT_COUNT" -eq 0 ]; then
-              echo "⚠️ No Allure results found — creating empty report"
-              mkdir -p allure-results
-            fi
-
-            ls -la allure-results || true
+            echo "📊 Found $RESULT_COUNT Allure files"
 
             if [ "$TESTS_FAILED" = "true" ]; then
-              echo "❌ Tests failed"
               exit 1
             fi
 
-      # =========================
-      # 6. Install Allure CLI
-      # =========================
-      - name: Install Allure CLI
+      # Install Allure manually (avoids Docker failure)
+      - name: Install Allure
         if: always()
         run: |
           sudo apt-get update
@@ -110,52 +92,41 @@ jobs:
           sudo mv allure-2.30.0 /opt/allure
           sudo ln -s /opt/allure/bin/allure /usr/bin/allure
 
-      # =========================
-      # 7. Generate Allure Report
-      # =========================
       - name: Generate Allure Report
         if: always()
         run: |
           mkdir -p allure-report
-          allure generate allure-results -o allure-report --clean || echo "Empty report generated"
+          if [ -d "allure-results" ]; then
+            allure generate allure-results --clean -o allure-report
+          else
+            echo "No results found"
+          fi
 
-      # =========================
-      # 8. Deploy to GitHub Pages
-      # =========================
+      - name: Merge History
+        if: always()
+        run: |
+          if [ -d "allure-history/history" ]; then
+            mkdir -p allure-report/history
+            cp -r allure-history/history/* allure-report/history/ || true
+          fi
+
       - name: Deploy to GitHub Pages
         if: always()
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_branch: gh-pages
           publish_dir: allure-report
 
-      # =========================
-      # 9. Upload artifacts
-      # =========================
       - name: Upload Allure Report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: allure-report
           path: allure-report
-          retention-days: 30
 
-      - name: Upload Coverage Report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: "**/build/reports/coverage/"
-          retention-days: 30
-
-      # =========================
-      # 10. Add Report Link
-      # =========================
-      - name: Add Report Link to Summary
+      - name: Add Report Link
         if: always()
         run: |
           REPORT_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
           echo "### 📊 Test Report" >> $GITHUB_STEP_SUMMARY
-          echo "[🔗 View Allure Report]($REPORT_URL)" >> $GITHUB_STEP_SUMMARY
-          echo "Report available at: $REPORT_URL"
+          echo "[View Report]($REPORT_URL)" >> $GITHUB_STEP_SUMMARY
