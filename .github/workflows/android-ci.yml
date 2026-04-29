@@ -54,30 +54,27 @@ jobs:
             echo "Running instrumented tests..."
             ./gradlew clean connectedAndroidTest --stacktrace
 
-            echo "📥 Pulling Allure results from device..."
-            adb shell mkdir -p /sdcard/allure-results || true
+            echo "📥 Pulling Allure results..."
+            # Try common locations - adjust <your.package.name> if needed
             adb pull /sdcard/allure-results ./allure-results || true
+            adb pull /data/data/com.mxl.test/files/allure-results ./allure-results || true   # ← Change package name
 
-      # ✅ Install Allure CLI
-      - name: Install Allure
-        run: |
-          wget https://github.com/allure-framework/allure2/releases/latest/download/allure-2.27.0.tgz
-          tar -zxvf allure-2.27.0.tgz
-          sudo mv allure-2.27.0 /opt/allure
-          sudo ln -s /opt/allure/bin/allure /usr/bin/allure
-
-      # ✅ Generate Allure Report
+      # Generate Allure Report
       - name: Generate Allure Report
+        if: always()                    # Important: run even if tests fail
         run: |
-          if [ -d "allure-results" ]; then
-            allure generate allure-results --clean -o allure-report
+          if [ -d "allure-results" ] && [ "$(ls -A allure-results)" ]; then
+            echo "Generating Allure report..."
+            docker run --rm -v $(pwd):/workdir --workdir /workdir ghcr.io/allure-framework/allure:latest generate allure-results --clean -o allure-report
           else
-            echo "⚠️ No Allure results found, skipping report generation"
+            echo "⚠️ No Allure results found. Skipping report generation."
+            mkdir -p allure-report
           fi
 
-      # ✅ Upload report as artifact
       - name: Upload Allure Report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: allure-report
           path: allure-report
+          retention-days: 30
