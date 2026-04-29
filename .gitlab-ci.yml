@@ -1,60 +1,72 @@
-name: Android Test Harness CI
+stages:
+  - build
+  - test
+  - report
 
-on:
-  push:
-    branches: [ main, fix/** ]
-  pull_request:
+variables:
+  GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle"
+  ANDROID_SDK_ROOT: "/sdk"
 
-jobs:
-  android-test:
-    runs-on: ubuntu-latest
+# =========================
+# 1. BUILD STAGE
+# =========================
+build:
+  stage: build
+  image: gradle:8.7-jdk17
+  script:
+    - ./gradlew clean assembleDebug
+  artifacts:
+    paths:
+      - app/build/outputs/
+    expire_in: 1 day
 
-    steps:
-      # =========================
-      # 1. Checkout
-      # =========================
-      - name: Checkout code
-        uses: actions/checkout@v4
+# =========================
+# 2. INSTRUMENTATION TESTS
+# =========================
+android_test:
+  stage: test
+  image: gradle:8.7-jdk17
 
-      # =========================
-      # 2. Setup Java
-      # =========================
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
+  services:
+    - name: budtmo/docker-android-emulator:latest
+      alias: emulator
 
-      # =========================
-      # 3. Setup Android Emulator + Run Tests
-      # =========================
-      - name: Run Instrumentation Tests
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          profile: pixel_5
-          script: |
-            echo "🚀 Running Android tests..."
-            ./gradlew clean connectedAndroidTest createDebugCoverageReport
+  before_script:
+    - apt-get update && apt-get install -y wget unzip adb
 
-      # =========================
-      # 4. Upload Coverage Report
-      # =========================
-      - name: Upload Coverage Report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: coverage-report
-          path: app/build/reports/coverage/androidTest/debug/connected/
+  script:
+    - echo "🚀 Running Android instrumentation tests..."
+    - ./gradlew clean connectedDebugAndroidTest createDebugCoverageReport --stacktrace
 
-      # =========================
-      # 5. OPTIONAL: Upload Test Results (safe fallback)
-      # =========================
-      - name: Upload Test Results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: android-test-results
-          path: app/build/outputs/androidTest-results/
+  artifacts:
+    when: always
+    paths:
+      - app/build/reports/coverage/androidTest/
+      - app/build/outputs/androidTest-results/
+    expire_in: 7 days
+
+# =========================
+# 3. REPORT STAGE (SAFE ALLURE HANDLING)
+# =========================
+report:
+  stage: report
+  image: alpine:latest
+
+  script:
+    - echo "📊 Preparing test reports..."
+
+    # Create folders safely (NO shell syntax issues)
+    - mkdir -p allure-results || true
+
+    # Copy coverage if exists
+    - if [ -d "app/build/reports" ]; then cp -r app/build/reports ./reports || true; fi
+
+    # Check if anything exists
+    - if [ "$(ls -A allure-results 2>/dev/null)" ]; then echo "Allure results found"; else echo "No Allure results generated"; fi
+
+  artifacts:
+    when: always
+    paths:
+      - allure-results/
+      - reports/
+    expire_in: 7 days
