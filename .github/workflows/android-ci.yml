@@ -1,0 +1,60 @@
+name: Android SDK Test Harness CI
+
+on:
+  push:
+    branches: [ main, fix/** ]
+  pull_request:
+
+jobs:
+  android-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # =========================
+      # Checkout code
+      # =========================
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # =========================
+      # Setup Java
+      # =========================
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # =========================
+      # Run Android tests on emulator
+      # =========================
+      - name: Run Android Instrumentation Tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_5
+          script: |
+            echo "🚀 Running SDK Test Harness..."
+            ./gradlew clean connectedDebugAndroidTest createDebugCoverageReport
+
+      # =========================
+      # Upload Coverage Report
+      # =========================
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: app/build/reports/coverage/
+
+      # =========================
+      # Upload Instrumentation Results
+      # =========================
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-test-results
+          path: app/build/outputs/androidTest-results/
