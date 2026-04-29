@@ -9,7 +9,7 @@ on:
 
 jobs:
   android-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest   # You can change to macos-14 later for better performance
 
     steps:
       - name: Checkout
@@ -21,34 +21,12 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      # Enable KVM for hardware acceleration (important for speed)
-      - name: Enable KVM Group Permissions
+      - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Install SDK packages
-        run: |
-          sdkmanager --install \
-            "platform-tools" \
-            "platforms;android-34" \
-            "system-images;android-34;google_apis;x86_64" \
-            "emulator" \
-            "build-tools;36.0.0"
-
-      - name: Create AVD
-        run: |
-          echo "no" | avdmanager create avd \
-            -n ci_emulator \
-            -k "system-images;android-34;google_apis;x86_64" \
-            --force \
-            --device "pixel_5"
-
-      # === FIXED: Run Emulator and Tests ===
       - name: Run Emulator and Tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -59,6 +37,7 @@ jobs:
           avd-name: ci_emulator
           disable-animations: true
           disable-linux-hw-accel: false
+          emulator-boot-timeout: 600   # 10 minutes max
           emulator-options: >
             -no-window
             -no-audio
@@ -68,25 +47,9 @@ jobs:
           script: |
             set -e
 
-            echo "Waiting for device to be online..."
-            adb wait-for-device
-
-            echo "Waiting for full boot..."
-            timeout 300s sh -c '
-              while true; do
-                boot_status=$(adb shell getprop sys.boot_completed 2>/dev/null || echo "0")
-                if [ "$boot_status" = "1" ]; then
-                  echo "✅ Emulator fully booted!"
-                  break
-                fi
-                echo "Still booting... (boot_completed = $boot_status)"
-                sleep 8
-              done
-            '
-
-            echo "Emulator ready!"
+            echo "✅ Emulator booted successfully!"
             adb devices -l
             adb shell input keyevent 82
 
-            echo "Running connected tests..."
+            echo "Running instrumented tests..."
             ./gradlew clean connectedAndroidTest --stacktrace
