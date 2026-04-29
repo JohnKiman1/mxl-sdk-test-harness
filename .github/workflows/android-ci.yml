@@ -63,13 +63,7 @@ jobs:
           path: allure-history
 
       # =========================
-      # 6. Make test script executable
-      # =========================
-      - name: Make ci-test script executable
-        run: chmod +x ci-test.sh
-
-      # =========================
-      # 7. Emulator + Tests
+      # 6. Emulator + Tests
       # =========================
       - name: Run Emulator and Tests
         uses: reactivecircus/android-emulator-runner@v2
@@ -82,31 +76,46 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 900
           emulator-options: -no-window -no-audio -no-snapshot -gpu swiftshader_indirect
-          script: ./ci-test.sh
+          script: |
+            set +e
+
+            echo "🚀 Waiting for emulator..."
+            adb wait-for-device
+            adb shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 5; done;'
+            adb shell input keyevent 82 || true
+
+            echo "🚀 Running tests..."
+
+            ./gradlew clean connectedAndroidTest createDebugCoverageReport --no-daemon --stacktrace
+            TEST_EXIT=$?
+
+            echo "📥 Creating Allure folder..."
+            mkdir -p allure-results
+
+            # OPTIONAL: only works if you configured Allure correctly in app
+            adb pull /sdcard/allure-results ./allure-results || true
+
+            echo "📊 Allure files:"
+            find allure-results || true
+
+            if [ $TEST_EXIT -ne 0 ]; then
+              echo "❌ Tests failed"
+              exit $TEST_EXIT
+            fi
 
       # =========================
-      # 8. Generate Allure Report
-      #
-      # FIX: replaced simple-elf/allure-report-action entirely.
-      #      v1.9 uses FROM openjdk:8-jre-alpine which was removed from
-      #      Docker Hub — it fails at the image build step with "not found".
-      #      @master has the same base image problem on modern runners.
-      #
-      #      Replaced with the official allure-framework/allure-report-action
-      #      which uses a current base image and is actively maintained.
+      # 7. Allure Report
       # =========================
       - name: Generate Allure Report
         if: always()
-        uses: allure-framework/allure-report-action@v1
+        uses: simple-elf/allure-report-action@master
         with:
-          allure-results: allure-results
-          allure-report: allure-report
-          gh-pages: allure-history
-          allure-history: allure-history
-          keep-reports: 20
+          allure_results: allure-results
+          allure_report: allure-report
+          allure_history: allure-history
 
       # =========================
-      # 9. Deploy Pages
+      # 8. Deploy Pages
       # =========================
       - name: Deploy to GitHub Pages
         if: always()
@@ -117,7 +126,7 @@ jobs:
           publish_dir: allure-history
 
       # =========================
-      # 10. Upload artifacts
+      # 9. Upload artifacts
       # =========================
       - name: Upload Allure Report
         if: always()
@@ -125,7 +134,6 @@ jobs:
         with:
           name: allure-report
           path: allure-report
-          retention-days: 30
 
       - name: Upload Coverage Report
         if: always()
@@ -133,14 +141,12 @@ jobs:
         with:
           name: coverage
           path: "**/build/reports/coverage/"
-          retention-days: 30
 
       # =========================
-      # 11. Summary
+      # 10. Summary
       # =========================
       - name: Summary
         if: always()
         run: |
-          REPORT_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
-          echo "### 📊 Test Report" >> $GITHUB_STEP_SUMMARY
-          echo "[🔗 View Allure Report]($REPORT_URL)" >> $GITHUB_STEP_SUMMARY
+          echo "### 📊 Report" >> $GITHUB_STEP_SUMMARY
+          echo "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/" >> $GITHUB_STEP_SUMMARY
