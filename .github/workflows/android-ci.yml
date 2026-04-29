@@ -53,7 +53,7 @@ jobs:
           sudo udevadm trigger
 
       # =========================
-      # 5. Get Allure History (safe)
+      # 5. Get Allure History
       # =========================
       - name: Get Allure History
         continue-on-error: true
@@ -62,11 +62,11 @@ jobs:
           ref: gh-pages
           path: allure-history
 
-      - name: Prepare Allure History Folder
+      - name: Prepare folders
         run: mkdir -p allure-history allure-results
 
       # =========================
-      # 6. Emulator + Tests (FIXED + DEBUG SAFE)
+      # 6. Emulator + Tests (DEBUG SAFE)
       # =========================
       - name: Run Emulator and Tests
         uses: reactivecircus/android-emulator-runner@v2
@@ -80,56 +80,66 @@ jobs:
           emulator-boot-timeout: 900
           emulator-options: -no-window -no-audio -no-snapshot -gpu swiftshader_indirect
           script: |
-            set +e
+            set -e
 
-            echo "======================================"
+            echo "=============================="
             echo "🚀 EMULATOR START CHECK"
-            echo "======================================"
+            echo "=============================="
 
+            adb devices -l
+
+            echo "Waiting for device..."
             adb wait-for-device
 
-            while [ -z "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" ]; do
-              echo "⏳ Waiting for emulator boot..."
+            echo "Waiting for boot completion..."
+            BOOT=""
+            for i in {1..60}; do
+              BOOT=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+              echo "boot status: $BOOT"
+              if [ "$BOOT" = "1" ]; then
+                break
+              fi
               sleep 5
             done
 
-            echo "✅ Emulator boot completed"
+            if [ "$BOOT" != "1" ]; then
+              echo "❌ Emulator failed to boot"
+              adb devices -l
+              exit 1
+            fi
+
+            echo "✅ Emulator booted successfully"
 
             adb shell input keyevent 82 || true
 
-            echo "======================================"
+            echo "=============================="
             echo "🚀 RUNNING TESTS"
-            echo "======================================"
+            echo "=============================="
 
             ./gradlew clean connectedAndroidTest createDebugCoverageReport --no-daemon --stacktrace
             TEST_EXIT=$?
 
-            echo "======================================"
-            echo "📊 TEST RESULT: $TEST_EXIT"
-            echo "======================================"
-
-            echo "======================================"
-            echo "📥 COLLECTING ALLURE RESULTS"
-            echo "======================================"
+            echo "=============================="
+            echo "📊 TEST EXIT CODE: $TEST_EXIT"
+            echo "=============================="
 
             mkdir -p allure-results
 
+            echo "Pulling allure results..."
             adb pull /sdcard/allure-results ./allure-results || true
 
-            echo "📁 Allure folder content:"
+            echo "Allure contents:"
             ls -R allure-results || true
 
-            echo "======================================"
-
-            if [ "$TEST_EXIT" -ne 0 ]; then
+            if [ "$TEST_EXIT" -eq 0 ]; then
+              echo "✅ TESTS PASSED"
+            else
               echo "❌ TESTS FAILED"
               exit $TEST_EXIT
-            else
-              echo "✅ TESTS PASSED"
             fi
 
       # =========================
-      # 7. Generate Allure Report (NO Docker)
+      # 7. Allure Report
       # =========================
       - name: Install Allure CLI
         if: always()
@@ -137,11 +147,10 @@ jobs:
 
       - name: Generate Allure Report
         if: always()
-        run: |
-          allure generate allure-results -o allure-report --clean || true
+        run: allure generate allure-results -o allure-report --clean || true
 
       # =========================
-      # 8. Deploy GitHub Pages
+      # 8. Deploy Pages
       # =========================
       - name: Deploy to GitHub Pages
         if: always()
@@ -153,7 +162,7 @@ jobs:
           force_orphan: true
 
       # =========================
-      # 9. Upload Artifacts
+      # 9. Artifacts
       # =========================
       - name: Upload Allure Report
         if: always()
@@ -162,7 +171,7 @@ jobs:
           name: allure-report
           path: allure-report
 
-      - name: Upload Coverage Report
+      - name: Upload Coverage
         if: always()
         uses: actions/upload-artifact@v4
         with:
