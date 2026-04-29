@@ -14,6 +14,8 @@ jobs:
 
     permissions:
       contents: write
+      pages: write
+      id-token: write
 
     steps:
       # =========================
@@ -66,7 +68,7 @@ jobs:
         run: mkdir -p allure-history allure-results
 
       # =========================
-      # 6. Emulator + Tests (DEBUG SAFE)
+      # 6. Emulator + Tests
       # =========================
       - name: Run Emulator and Tests
         uses: reactivecircus/android-emulator-runner@v2
@@ -91,29 +93,56 @@ jobs:
 
       - name: Generate Allure Report
         if: always()
-        run: allure generate allure-results -o allure-report --clean || true
+        run: |
+          if [ -d "allure-results" ] && [ "$(ls -A allure-results)" ]; then
+            allure generate allure-results -o allure-report --clean
+            echo "✅ Allure report generated"
+          else
+            echo "⚠️ No allure-results found, generating empty report"
+            mkdir -p allure-report
+            echo "<html><body><h1>No test results available</h1></body></html>" > allure-report/index.html
+          fi
 
       # =========================
-      # 8. Deploy Pages
+      # 8. Deploy to GitHub Pages (Method 1: Official GitHub Action)
       # =========================
+      - name: Upload Pages Artifact
+        if: always()
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: allure-report
+
       - name: Deploy to GitHub Pages
         if: always()
-        uses: peaceiris/actions-gh-pages@v4
+        uses: actions/deploy-pages@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_branch: gh-pages
-          publish_dir: allure-report
-          force_orphan: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # =========================
+      # 8b. Alternative Deploy Method (using peaceiris - uncomment if above doesn't work)
+      # =========================
+      # - name: Deploy to GitHub Pages (Alternative)
+      #   if: always()
+      #   uses: peaceiris/actions-gh-pages@v4
+      #   with:
+      #     github_token: ${{ secrets.GITHUB_TOKEN }}
+      #     publish_branch: gh-pages
+      #     publish_dir: allure-report
+      #     force_orphan: true
+      #     user_name: 'github-actions[bot]'
+      #     user_email: 'github-actions[bot]@users.noreply.github.com'
+      #     commit_message: 'Deploy Allure report to GitHub Pages'
 
       # =========================
       # 9. Artifacts
       # =========================
-      - name: Upload Allure Report
+      - name: Upload Allure Report as Artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: allure-report
           path: allure-report
+          retention-days: 30
 
       - name: Upload Coverage
         if: always()
@@ -121,6 +150,7 @@ jobs:
         with:
           name: coverage
           path: "**/build/reports/coverage/"
+          retention-days: 30
 
       # =========================
       # 10. Summary
@@ -128,5 +158,15 @@ jobs:
       - name: Summary
         if: always()
         run: |
-          echo "### 📊 Report" >> $GITHUB_STEP_SUMMARY
-          echo "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/" >> $GITHUB_STEP_SUMMARY
+          echo "### 📊 Test Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Report Links:**" >> $GITHUB_STEP_SUMMARY
+          echo "- 📈 [Allure Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/)" >> $GITHUB_STEP_SUMMARY
+          echo "- 📦 [Download Allure Report Artifact](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f "app/build/reports/coverage/androidTest/debug/connected/index.html" ]; then
+            echo "**Coverage Report:** ✅ Generated" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Coverage Report:** ⚠️ Not found" >> $GITHUB_STEP_SUMMARY
+          fi
