@@ -63,10 +63,10 @@ jobs:
           path: allure-history
 
       - name: Prepare Allure History Folder
-        run: mkdir -p allure-history
+        run: mkdir -p allure-history allure-results
 
       # =========================
-      # 6. Emulator + Tests
+      # 6. Emulator + Tests (FIXED + DEBUG SAFE)
       # =========================
       - name: Run Emulator and Tests
         uses: reactivecircus/android-emulator-runner@v2
@@ -82,31 +82,54 @@ jobs:
           script: |
             set +e
 
-            echo "🚀 Waiting for emulator..."
+            echo "======================================"
+            echo "🚀 EMULATOR START CHECK"
+            echo "======================================"
+
             adb wait-for-device
-            adb shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 5; done;'
+
+            while [ -z "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" ]; do
+              echo "⏳ Waiting for emulator boot..."
+              sleep 5
+            done
+
+            echo "✅ Emulator boot completed"
+
             adb shell input keyevent 82 || true
 
-            echo "🚀 Running tests..."
+            echo "======================================"
+            echo "🚀 RUNNING TESTS"
+            echo "======================================"
 
             ./gradlew clean connectedAndroidTest createDebugCoverageReport --no-daemon --stacktrace
             TEST_EXIT=$?
 
-            echo "📥 Creating Allure folder..."
+            echo "======================================"
+            echo "📊 TEST RESULT: $TEST_EXIT"
+            echo "======================================"
+
+            echo "======================================"
+            echo "📥 COLLECTING ALLURE RESULTS"
+            echo "======================================"
+
             mkdir -p allure-results
 
             adb pull /sdcard/allure-results ./allure-results || true
 
-            echo "📊 Allure files:"
-            find allure-results || true
+            echo "📁 Allure folder content:"
+            ls -R allure-results || true
+
+            echo "======================================"
 
             if [ "$TEST_EXIT" -ne 0 ]; then
-              echo "❌ Tests failed"
+              echo "❌ TESTS FAILED"
               exit $TEST_EXIT
+            else
+              echo "✅ TESTS PASSED"
             fi
 
       # =========================
-      # 7. Generate Allure Report (FIXED - no Docker)
+      # 7. Generate Allure Report (NO Docker)
       # =========================
       - name: Install Allure CLI
         if: always()
